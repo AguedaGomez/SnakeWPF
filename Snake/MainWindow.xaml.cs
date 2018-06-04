@@ -21,12 +21,15 @@ namespace Snake
     /// </summary>
     public partial class MainWindow : Window
     {
-        private const int PADDING = 2;
-        private const int N_CIRCLES = 30;
+        private const int PADDING = 0;
+        private const int N_CIRCLES = 32;
+        private const int TRY = 20;
         private double radius;
         private Point headPosition = new Point(15, 15);
         private int longSnake = 4;
-        private List<Ellipse> snake = new List<Ellipse>();
+        private int score = 0;
+        private List<GameObject> snake = new List<GameObject>();
+        private Dictionary<Point, GameObject> occupedCellds = new Dictionary<Point, GameObject>();
         DispatcherTimer dispatcherTimer = new DispatcherTimer();
         private enum DirMovement
         {
@@ -36,6 +39,8 @@ namespace Snake
             RIGHT
         }
         private DirMovement currentDir = DirMovement.RIGHT;
+        private int speed = 500;
+        private int foodAvaiable = 0;
 
         public MainWindow()
         {
@@ -46,42 +51,108 @@ namespace Snake
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
             radius = (canvas.ActualHeight - PADDING * N_CIRCLES) / N_CIRCLES;
-            for (int i = 0; i <= longSnake; i++)
+
+            Label gameOverText = new Label()
             {
-                var snakePart = new Ellipse()
-                {
-                    Height = radius,
-                    Width = radius,
-                    Fill = Brushes.LightGreen,
-                };
+                Content = "PRESS START",
+                VerticalContentAlignment = VerticalAlignment.Center,
+                HorizontalContentAlignment = HorizontalAlignment.Center,
+                Width = 350,
+                Height = 100,
+                FontSize = 50,
 
-                if (i == 0)
-                {
-                    snakePart.Fill = Brushes.ForestGreen;
-                    //snakePart.Tag = "head";
-                }
-                var currentCol = Column2CorX((int)headPosition.Y - i);
-                var currentRow = Row2CorY((int)headPosition.X);
-
-                Canvas.SetLeft(snakePart, currentCol);
-                Canvas.SetBottom(snakePart, currentRow);
-                canvas.Children.Add(snakePart);
-                snake.Add(snakePart);
-            }
+            };
+            Canvas.SetLeft(gameOverText, (canvas.Width - gameOverText.Width) / 2);
+            Canvas.SetBottom(gameOverText, (canvas.Height - gameOverText.Height) / 2);
+            canvas.Children.Clear();
+            canvas.Children.Add(gameOverText);
 
             dispatcherTimer.Tick += DispatcherTimer_Tick;
-            dispatcherTimer.Interval = new TimeSpan(0, 0, 1);
+            dispatcherTimer.Interval = new TimeSpan(0, 0, 0, 0, speed);
 
+        }
 
+        private void CreateSnake()
+        {
+            var color = Brushes.LightGreen;
+            for (int i = 0; i <= longSnake; i++)
+            {
+                if (i == 0)
+                    color = Brushes.ForestGreen;
+                else
+                    color = Brushes.LightGreen;
 
+                var col = (int)headPosition.Y - i;
+                var row = (int)headPosition.X;
+
+                var snakeGO = CreateGameObject("snake", color, col, row);
+
+                snake.Add(snakeGO);
+                occupedCellds.Add(new Point(row, col), snakeGO);
+            }
+        }
+
+        private void UpdateScore()
+        {
+            score += 10;
+            puntos.Text = "score: " + score;
+        }
+
+        private GameObject CreateGameObject(string tag, Brush color, int col, int row)
+        {
+            var ellipse = new Ellipse()
+            {
+                Height = radius,
+                Width = radius,
+                Tag = tag,
+                Fill = color,
+            };
+
+            var currentCol = Column2CorX(col);
+            var currentRow = Row2CorY(row);
+
+            Canvas.SetLeft(ellipse, currentCol);
+            Canvas.SetBottom(ellipse, currentRow);
+            canvas.Children.Add(ellipse);
+
+            GameObject GO = new GameObject(ellipse, new Point(row, col));
+            return GO;
+            /*if (tag == "snakeBody")
+                snake.Add(GO);
+            else if (tag == "snakeHead")
+                snake.Insert(0, GO);
+            if (!CheckCollision())
+                occupedCellds.Add(new Point(row, col), GO);*/
+
+        }
+
+        private void GameOver()
+        {
+            dispatcherTimer.Stop();
+            Label gameOverText = new Label()
+            {
+                Content = "GAME OVER",
+                VerticalContentAlignment = VerticalAlignment.Center,
+                HorizontalContentAlignment = HorizontalAlignment.Center,
+                Width = 350,
+                Height = 100,
+                FontSize = 50,
+
+            };
+            Canvas.SetLeft(gameOverText, (canvas.Width - gameOverText.Width) / 2);
+            Canvas.SetBottom(gameOverText, (canvas.Height - gameOverText.Height) / 2);
+            canvas.Children.Clear();
+            canvas.Children.Add(gameOverText);
+            Start.IsEnabled = true;
         }
 
         private void DispatcherTimer_Tick(object sender, EventArgs e)
         {
-            var tail = snake.Last<Ellipse>();
+            var tail = snake.Last();
+            occupedCellds.Remove(tail.cells);
             snake.Remove(tail);
-            canvas.Children.Remove(tail);
-            snake.First<Ellipse>().Fill = Brushes.LightGreen;
+            canvas.Children.Remove(tail.ellipse);
+            snake.First().ellipse.Fill = Brushes.LightGreen;
 
             switch (currentDir)
             {
@@ -101,28 +172,83 @@ namespace Snake
                     break;
             }
 
-            var snakePart = new Ellipse()
+            var col = (int)headPosition.Y;
+            var row = (int)headPosition.X;
+
+            var snakeHead = CreateGameObject("snake", Brushes.ForestGreen, col, row);
+
+            snake.Insert(0, snakeHead);
+            if (!CheckCollision())
+                occupedCellds.Add(new Point(row, col), snakeHead);
+            if (foodAvaiable < 1)
+                CreateFood();
+        }
+
+        private void CreateFood()
+        {
+            Random rand = new Random();
+            for (int i=0; i<TRY; i++)
             {
-                Height = radius,
-                Width = radius,
-                Fill = Brushes.ForestGreen,
-            };
-            var currentCol = Column2CorX((int)headPosition.Y);
-            var currentRow = Row2CorY((int)headPosition.X);
-            Canvas.SetLeft(snakePart, currentCol);
-            Canvas.SetBottom(snakePart, currentRow);
-            canvas.Children.Add(snakePart);
-            snake.Insert(0, snakePart);
+                var row = rand.Next(0, N_CIRCLES);
+                var col = rand.Next(0, N_CIRCLES);
+                var foodPosition = new Point(row, col);
+                if (!occupedCellds.ContainsKey(foodPosition))
+                {
+                    var food = CreateGameObject("food", Brushes.Red, col, row);
+                    occupedCellds.Add(foodPosition, food);
+                    foodAvaiable = 1;
+                    break;
+                }
+        
+            }
+
+        }
+
+        private bool CheckCollision()
+        {
+            if (occupedCellds.ContainsKey(headPosition))
+            {
+                switch (occupedCellds[headPosition].ellipse.Tag)
+                {
+                    case "snake":
+                        GameOver();
+                        break;
+                    case "food":
+                        canvas.Children.Remove(occupedCellds[headPosition].ellipse);
+                        occupedCellds.Remove(headPosition);
+                        foodAvaiable = 0;
+                        CreateFood();
+                        if (speed >= 50)
+                            speed -= 50;
+                        var col = (int)snake.Last().cells.Y;
+                        var row = (int)snake.Last().cells.X;
+                        var snakeGO = CreateGameObject("snake", Brushes.LightGreen, col, row);
+                        snake.Add(snakeGO);
+                        UpdateScore();
+                        break;
+                    default:
+                        break;
+                }
+                return true;
+            }
+            else
+            {
+                if (headPosition.X > N_CIRCLES | headPosition.Y >= N_CIRCLES | headPosition.X <= 0 | headPosition.Y < 0)
+                    GameOver();
+            }
+            return false;
         }
 
         private int CorX2Column(double xCor)
         {
-            return Convert.ToInt32((xCor - PADDING) / (PADDING + radius));
+            var res = (xCor - PADDING) / (PADDING + radius);
+            return (int)Math.Round(res);
         }
 
         private int CorY2Row(double yCor)
         {
-            return Convert.ToInt32((N_CIRCLES - ((canvas.ActualHeight - yCor) / (radius + PADDING))));
+            var res = (N_CIRCLES - ((canvas.ActualHeight - yCor) / (radius + PADDING)));
+            return (int)Math.Round(res);
         }
 
         private double Column2CorX(int col)
@@ -137,8 +263,20 @@ namespace Snake
 
         private void Start_Click(object sender, RoutedEventArgs e)
         {
+            ClearState();
+            CreateSnake();
             dispatcherTimer.Start();
             canvas.Focus();
+            CreateFood();
+            Start.IsEnabled = false;
+        }
+
+        private void ClearState()
+        {
+            snake.Clear();
+            canvas.Children.Clear();
+            occupedCellds.Clear();
+            headPosition = new Point(15, 15);
         }
 
         private void Canvas_KeyDown(object sender, KeyEventArgs e)
